@@ -260,6 +260,9 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
     
     # Scale score to 0-10 range
     final_score = min(10, score * 10 / 9)  # Max possible raw score is 9
+    print(f"During calculate moat strengh, details as below, score {final_score}")
+    for detail in details:
+        print(detail)
     
     return {
         "score": final_score,
@@ -459,6 +462,9 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     # Maximum possible raw score would be 12 (3+3+2+2+2)
     final_score = max(0, min(10, score * 10 / 12))
     
+    print(f"During analysis management quality, details as below, score {final_score}")
+    for detail in details:
+        print(detail)
     return {
         "score": final_score,
         "details": "; ".join(details),
@@ -588,6 +594,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
     # Maximum possible raw score would be 10 (3+3+2+2)
     final_score = min(10, score * 10 / 10)
     
+    print(f"During analysis management quality, details as below, score {final_score}")
+    for detail in details:
+        print(detail)
     return {
         "score": final_score,
         "details": "; ".join(details)
@@ -695,6 +704,9 @@ def calculate_munger_valuation(financial_line_items: list, market_cap: float) ->
     # Maximum possible raw score would be 10 (4+3+3)
     final_score = min(10, score * 10 / 10) 
     
+    print(f"During calculate munger valuation score, details as below, score {final_score}")
+    for detail in details:
+        print(detail)
     return {
         "score": final_score,
         "details": "; ".join(details),
