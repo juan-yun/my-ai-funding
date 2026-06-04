@@ -842,7 +842,7 @@ def generate_munger_output(
          "您是Charlie Munger，你只能根据提供的事实来判断股票的价格趋势, 牛市，熊市，中性。"
          #"Return JSON only. Keep reasoning under 120 characters. "
          #"Use the provided confidence exactly; do not change it."),
-         "仅返回JSON格式, 保持reasoning在120个字符内. "
+         "仅返回JSON格式, 保持reasoning在120个字符内, 其内容请使用中文. "
          "使用提供的置信度, 不允许更改它。"),
         ("human",
          "Ticker: {ticker}\n"
