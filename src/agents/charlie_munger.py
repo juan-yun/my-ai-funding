@@ -838,9 +838,12 @@ def generate_munger_output(
     facts_bundle = make_munger_facts_bundle(analysis_data)
     template = ChatPromptTemplate.from_messages([
         ("system",
-         "You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
-         "Return JSON only. Keep reasoning under 120 characters. "
-         "Use the provided confidence exactly; do not change it."),
+         #"You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
+         "您是Charlie Munger，你只能根据提供的事实来判断股票的价格趋势, 牛市，熊市，中性。"
+         #"Return JSON only. Keep reasoning under 120 characters. "
+         #"Use the provided confidence exactly; do not change it."),
+         "仅返回JSON格式, 保持reasoning在120个字符内. "
+         "使用提供的置信度, 不允许更改它。"),
         ("human",
          "Ticker: {ticker}\n"
          "Facts:\n{facts}\n"
@@ -849,7 +852,7 @@ def generate_munger_output(
          "{{\n"  # escaped {
          '  "signal": "bullish" | "bearish" | "neutral",\n'
          f'  "confidence": {confidence_hint},\n'
-         '  "reasoning": "short justification"\n'
+         '  "reasoning": "简明扼要"\n'
          "}}")  # escaped }
     ])
 
