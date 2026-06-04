@@ -29,7 +29,8 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
     
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)  # Munger looks at longer periods
+        #metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)  # Munger looks at longer periods
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         financial_line_items = search_line_items(
@@ -52,7 +53,8 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
             ],
             end_date,
             period="annual",
-            limit=10,  # Munger examines long-term trends
+            #limit=10,  # Munger examines long-term trends
+            limit=3,  # Munger examines long-term trends
             api_key=api_key,
         )
         
@@ -64,7 +66,8 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
         insider_trades = get_insider_trades(
             ticker,
             end_date,
-            limit=100,
+            #limit=100,
+            limit=10,
             api_key=api_key,
         )
         
