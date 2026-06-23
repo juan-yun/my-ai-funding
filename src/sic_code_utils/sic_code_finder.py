@@ -243,17 +243,15 @@ class SICCodeFinder:
         if not company.is_company:
             log.warning(f"{ticker} is not a company")
             return None
-        desc = self.get_sic_desc(company.sic)
+        #desc = self.get_sic_desc(company.sic)
         result = CompanySICData(
             ticker=ticker,
             name=company.name,
             cik=company.cik,
             sic_code=company.sic,
             sic_industry=company.industry,
-            sic_sector=desc.maj_cd
+            sic_sector=""
         )
-
-        log.info(f"result: {result}")
         return result
     
     def get_companies_by_sic(self, sic_code: str) -> List[CompanySICData]:
