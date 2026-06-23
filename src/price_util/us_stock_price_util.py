@@ -16,26 +16,30 @@ class UsStockPriceUtil:
         if start_date:
             start_date = pd.to_datetime(start_date)
         if end_date:
-            end = pd.to_datetime(end_date)
+            end_date = pd.to_datetime(end_date)
 
         df = ak.stock_us_daily(symbol=symbol, adjust=adjust)
         if None is df:
+            log.error(f"get {symbol} price failed....")
             return None 
         if start_date is not None:
             df = df[df['date'] >= start_date]
         if end_date is not None:
-            df = df[df['date'] <= end]
+            df = df[df['date'] <= end_date]
         filtered_df = df
         filtered_df = filtered_df.reset_index(drop=True)
         return filtered_df
 
     @classmethod
     def get_stock_price_by_akshare(cls, ticker, adjust, start_date, end_date):
+        log.info(f"get {ticker} price by akshare, start_date is {start_date}, end_date is {end_date}")
         df = UsStockPriceUtil.query(symbol=ticker, adjust=adjust, start_date=start_date, end_date=end_date)
+        if None is df:
+            log.error(f"get {ticker} price failed....")
+            return None
         for col in ["open", "close", "high", "low"]:
             df[col] = np.round(df[col], decimals=2)
         df.set_index(["date"], inplace=True, drop=False)
-        log.info(f"{ticker} price df is: \n{df}")
         return df[UsStockPriceUtil.OHLCV]
     
     

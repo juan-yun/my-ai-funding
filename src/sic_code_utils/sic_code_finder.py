@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 import pandas as pd
 import sys
+from edgar import Company
 sys.path.append("./")
 from ai_lab_comm.log_util import log
 from sec_gov_utils.corp_ticker_utils import SecGovCompanyTickerUtils
@@ -162,9 +163,7 @@ class SICCodeFinder:
     """SIC代码查询器"""
     
     def __init__(self):
-        self._base_url = "https://api.financialdatasets.ai"
         self._cached_sic_desc_dict: Dict[str, CompanySICData] = {}
-        self._api_key = os.getenv("FINANCIAL_DATASETS_API_KEY")
         self._load_sic_data()
 
 
@@ -176,7 +175,6 @@ class SICCodeFinder:
             log.warning(f"SIC描述文件不存在: {desc_file_path}")
             return
         df = pd.read_csv(desc_file_path, sep=",")  
-        log.info(f"\n {df.head(5)}")
         
         for index, row in df.iterrows():
             key = str(row["SIC4_cd"])
@@ -193,26 +191,6 @@ class SICCodeFinder:
 
         log.info(f"load {len(self._cached_sic_desc_dict)} SIC descriptions from {desc_file_path}")
 
-
-    def _get_headers(self) -> Dict[str, str]:
-        """获取API请求头"""
-        headers = {}
-        if self._api_key:
-            headers["X-API-KEY"] = self._api_key
-        return headers
-    
-    def _fetch_company_facts(self, ticker: str) -> Optional[dict]:
-        """获取公司基本信息"""
-        url = f"{self._base_url}/company/facts/?ticker={ticker}"
-        try:
-            response = requests.get(url, headers=self._get_headers())
-            if response.status_code == 200:
-                return response.json()
-            return None
-        except Exception as e:
-            print(f"获取公司信息失败: {ticker} - {e}")
-            return None
-    
     def _fetch_all_companies(self) -> List[dict]:
 
         """获取所有公司列表"""
@@ -260,58 +238,23 @@ class SICCodeFinder:
         )
     
     def get_sic_by_ticker(self, ticker: str) -> Optional[CompanySICData]:
-        """
-        根据ticker查询SIC信息
-        
-        Args:
-            ticker: 股票代码
-        
-        Returns:
-            CompanySICData对象
-        """
         ticker = ticker.upper().strip()
-        
-        # 检查缓存
-        if ticker in self._cached_sic_desc_dict:
-            return self._cached_sic_desc_dict[ticker]
-        
-        # 从API获取数据
-        data = self._fetch_company_facts(ticker)
-        if not data:
+        company = Company(ticker) 
+        if not company.is_company:
+            log.warning(f"{ticker} is not a company")
             return None
-        
-        company_facts = data.get('company_facts', {})
+        desc = self.get_sic_desc(company.sic)
         result = CompanySICData(
             ticker=ticker,
-            name=company_facts.get('name', ''),
-            cik=company_facts.get('cik'),
-            sic_code=company_facts.get('sic_code'),
-            sic_industry=company_facts.get('sic_industry'),
-            sic_sector=company_facts.get('sic_sector')
+            name=company.name,
+            cik=company.cik,
+            sic_code=company.sic,
+            sic_industry=company.industry,
+            sic_sector=desc.maj_cd
         )
-        
-        # 缓存结果
-        self._cached_sic_desc_dict[ticker] = result
+
+        log.info(f"result: {result}")
         return result
-    
-    def get_sic_by_cik(self, cik: str) -> Optional[CompanySICData]:
-        """
-        根据CIK查询SIC信息
-        
-        Args:
-            cik: 中央索引键
-        
-        Returns:
-            CompanySICData对象
-        """
-        # 目前API不支持直接通过CIK查询，需要遍历公司列表
-        companies = self._fetch_all_companies()
-        for company in companies:
-            if company.get('cik') == cik:
-                ticker = company.get('ticker')
-                if ticker:
-                    return self.get_sic_by_ticker(ticker)
-        return None
     
     def get_companies_by_sic(self, sic_code: str) -> List[CompanySICData]:
         sic_code = sic_code.strip()
@@ -319,8 +262,8 @@ class SICCodeFinder:
         results = []
         
         for idx, ticker in enumerate(companies.keys()):
-            company: CompanySICData = self.get_sic_by_ticker(ticker)
             log.info(f"try to filter {idx} {ticker}")
+            company: CompanySICData = self.get_sic_by_ticker(ticker)
             if not company:
                 continue
             if company.sic_code != sic_code:
@@ -379,44 +322,6 @@ class SICCodeFinder:
         """
         return {code: sector["name"] for code, sector in SIC_SECTORS.items()}
     
-    def search_companies(self, query: str) -> List[CompanySICData]:
-        """
-        综合搜索：根据ticker、公司名称或SIC查询公司
-        
-        Args:
-            query: 搜索关键词
-        
-        Returns:
-            匹配的公司列表
-        """
-        query = query.upper().strip()
-        results = []
-        
-        # 尝试作为ticker查询
-        by_ticker = self.get_sic_by_ticker(query)
-        if by_ticker:
-            results.append(by_ticker)
-            return results
-        
-        # 尝试作为SIC代码查询
-        by_sic = self.get_companies_by_sic(query)
-        if by_sic:
-            results.extend(by_sic)
-        
-        # 尝试作为行业关键词查询
-        by_industry = self.get_companies_by_industry(query.lower())
-        if by_industry:
-            for company in by_industry:
-                if company not in results:
-                    results.append(company)
-        
-        # 尝试作为CIK查询
-        by_cik = self.get_sic_by_cik(query)
-        if by_cik and by_cik not in results:
-            results.append(by_cik)
-        
-        return results
-
 
 # 全局实例
 _sic_finder = None
@@ -439,22 +344,8 @@ def get_sic_info_by_cik(cik: str) -> Optional[CompanySICData]:
     """根据CIK获取SIC信息（便捷函数）"""
     return get_sic_finder().get_sic_by_cik(cik)
 
-
-def search_companies_by_sic(sic_code: str) -> List[CompanySICData]:
-    """根据SIC代码搜索公司（便捷函数）"""
-    return get_sic_finder().get_companies_by_sic(sic_code)
-
-
-def search_companies_by_industry(industry: str) -> List[CompanySICData]:
-    """根据行业搜索公司（便捷函数）"""
-    return get_sic_finder().get_companies_by_industry(industry)
-
-
 if __name__ == "__main__":
-    # 示例用法
     finder = SICCodeFinder()
-    
-    # 1. 根据ticker查询SIC
     print("=== 根据ticker查询 ===")
     ticker = "AAPL"
     corp_sic_info = finder.get_sic_by_ticker(ticker)
