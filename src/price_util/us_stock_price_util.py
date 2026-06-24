@@ -31,6 +31,28 @@ class UsStockPriceUtil:
         return filtered_df
 
     @classmethod
+    def query_valid_close_price(cls, symbol, adjust, specific_date:str)->float|None:
+        df = ak.stock_us_daily(symbol=symbol, adjust=adjust)
+        log.info(f"price df: \n{df}")
+        if df is None:
+            return None
+        if specific_date is None or specific_date == "":
+            return df.tail(1)["close"].iloc[0]
+        #specific_date = pd.to_datetime(specific_date)
+        price_df = df[df['date'] == specific_date]
+        while True:
+            if price_df.empty:
+                specific_date = pd.to_datetime(specific_date) - pd.Timedelta(days=1)
+                price_df = df[df['date'] == specific_date]
+                log.info(f"price_df: \n{price_df} at {specific_date}")
+            else:
+                break
+        log.info(f"price_df: \n{price_df} at {specific_date}")
+        price = price_df["close"].iloc[0]
+        return price
+
+
+    @classmethod
     def get_stock_price_by_akshare(cls, ticker, adjust, start_date, end_date):
         log.info(f"get {ticker} price by akshare, start_date is {start_date}, end_date is {end_date}")
         df = UsStockPriceUtil.query(symbol=ticker, adjust=adjust, start_date=start_date, end_date=end_date)
@@ -62,3 +84,8 @@ if __name__ == '__main__':
     for ticker in ["AMZN"]:
         adjust=""
         df_actual = UsStockPriceUtil.get_stock_price_by_akshare(ticker, adjust,start_date, end_date)
+        price1 = UsStockPriceUtil.query_valid_close_price(ticker, adjust, end_date)
+        log.info(f"{ticker} price on {end_date} is {price1}")
+        end_date = ""
+        price2 = UsStockPriceUtil.query_valid_close_price(ticker, adjust, end_date)
+        log.info(f"{ticker} price on {end_date} {price2}")

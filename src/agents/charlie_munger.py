@@ -1,5 +1,6 @@
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_insider_trades, get_company_news
+#from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_insider_trades, get_company_news
+from src.tools.api import get_financial_metrics, search_line_items, get_insider_trades_myself, get_company_news
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -8,6 +9,8 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
+from src.edgar_tools_facade.edgar_tools_facade import EdgarToolsFacade
+from datetime import datetime
 
 class CharlieMungerSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -23,62 +26,61 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    #api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    api_key = None
     analysis_data = {}
     munger_analysis = {}
-    
+    edgar_tools = EdgarToolsFacade()
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
         #metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)  # Munger looks at longer periods
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
+        #metrics = get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
+        metrics = None #get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
-        financial_line_items = search_line_items(
+        end_date = datetime.strptime(end_date, "%Y-%m-%d")
+        financial_line_items = edgar_tools.query_concepts(
+        #financial_line_items = search_line_items(
             ticker,
             [
-                "revenue",
-                "net_income",
-                "operating_income",
-                "return_on_invested_capital",
-                "gross_margin",
-                "operating_margin",
-                "free_cash_flow",
-                "capital_expenditure",
-                "cash_and_equivalents",
-                "total_debt",
-                "shareholders_equity",
-                "outstanding_shares",
-                "research_and_development",
-                "goodwill_and_intangible_assets",
-            ],
+                "revenue", "net_income", "operating_income",
+                "return_on_invested_capital", "gross_margin", "operating_margin",
+                "free_cash_flow", "capital_expenditure", "cash_and_equivalents",
+                "total_debt", "shareholders_equity", "outstanding_shares",
+                "research_and_development", "goodwill_and_intangible_assets", ],
             end_date,
             period="annual",
             #limit=10,  # Munger examines long-term trends
             limit=3,  # Munger examines long-term trends
-            api_key=api_key,
+            #api_key=api_key,
         )
         
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        #market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = financial_line_items[-1]["market_cap"]
+        if market_cap is None:
+            continue
         
         progress.update_status(agent_id, ticker, "Fetching insider trades")
         # Munger values management with skin in the game
-        insider_trades = get_insider_trades(
+        #insider_trades = get_insider_trades(
+        insider_trades = get_insider_trades_myself(
             ticker,
             end_date,
             #limit=100,
             limit=10,
-            api_key=api_key,
+            #api_key=api_key,
         )
         
         progress.update_status(agent_id, ticker, "Fetching company news")
         # Munger avoids businesses with frequent negative press
-        company_news = get_company_news(
-            ticker,
-            end_date,
-            limit=10,
-            api_key=api_key,
-        )
+        company_news = [] 
+        #get_company_news(
+        #    ticker,
+        #    end_date,
+        #    limit=10,
+        #    api_key=api_key,
+        #)
         
         progress.update_status(agent_id, ticker, "Analyzing moat strength")
         moat_analysis = analyze_moat_strength(metrics, financial_line_items)
@@ -172,15 +174,18 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
     score = 0
     details = []
     
-    if not metrics or not financial_line_items:
+    #if not metrics or not financial_line_items:
+    if not financial_line_items:
         return {
             "score": 0,
             "details": "Insufficient data to analyze moat strength"
         }
     
     # 1. Return on Invested Capital (ROIC) analysis - Munger's favorite metric
-    roic_values = [item.return_on_invested_capital for item in financial_line_items 
-                   if hasattr(item, 'return_on_invested_capital') and item.return_on_invested_capital is not None]
+    #roic_values = [item.return_on_invested_capital for item in financial_line_items 
+    #               if hasattr(item, 'return_on_invested_capital') and item.return_on_invested_capital is not None]
+    roic_values = [item["return_on_invested_capital"] for item in financial_line_items ]
+                  # if hasattr(item, 'return_on_invested_capital') and item.return_on_invested_capital is not None]
     
     if roic_values:
         # Check if ROIC consistently above 15% (Munger's threshold)
@@ -200,9 +205,11 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
         details.append("No ROIC data available")
     
     # 2. Pricing power - check gross margin stability and trends
-    gross_margins = [item.gross_margin for item in financial_line_items 
-                    if hasattr(item, 'gross_margin') and item.gross_margin is not None]
-    
+
+    #gross_margins = [item.gross_margin for item in financial_line_items 
+    gross_margins = [item["gross_margin"] for item in financial_line_items ]
+                    #if hasattr(item, 'gross_margin') and item.gross_margin is not None]
+    print(f"gross_margin are: {gross_margins}")    
     if gross_margins and len(gross_margins) >= 3:
         # Munger likes stable or improving gross margins
         margin_trend = sum(1 for i in range(1, len(gross_margins)) if gross_margins[i] >= gross_margins[i-1])
@@ -221,10 +228,11 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
     if len(financial_line_items) >= 3:
         capex_to_revenue = []
         for item in financial_line_items:
-            if (hasattr(item, 'capital_expenditure') and item.capital_expenditure is not None and 
-                hasattr(item, 'revenue') and item.revenue is not None and item.revenue > 0):
+            #if (hasattr(item, 'capital_expenditure') and item.capital_expenditure is not None and 
+            #    hasattr(item, 'revenue') and item.revenue is not None and item.revenue > 0):
+            if "capital_expenditure" in item and "revenue" in item:
                 # Note: capital_expenditure is typically negative in financial statements
-                capex_ratio = abs(item.capital_expenditure) / item.revenue
+                capex_ratio = abs(item["capital_expenditure"]) / item["revenue"]
                 capex_to_revenue.append(capex_ratio)
         
         if capex_to_revenue:
@@ -243,11 +251,11 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
         details.append("Insufficient data for capital intensity analysis")
     
     # 4. Intangible assets - Munger values R&D and intellectual property
-    r_and_d = [item.research_and_development for item in financial_line_items
-              if hasattr(item, 'research_and_development') and item.research_and_development is not None]
+    r_and_d = [item["research_and_development"] for item in financial_line_items]
+              #if hasattr(item, 'research_and_development') and item.research_and_development is not None]
     
-    goodwill_and_intangible_assets = [item.goodwill_and_intangible_assets for item in financial_line_items
-               if hasattr(item, 'goodwill_and_intangible_assets') and item.goodwill_and_intangible_assets is not None]
+    goodwill_and_intangible_assets = [item["goodwill_and_intangible_assets"] for item in financial_line_items]
+               #if hasattr(item, 'goodwill_and_intangible_assets') and item.goodwill_and_intangible_assets is not None]
 
     if r_and_d and len(r_and_d) > 0:
         if sum(r_and_d) > 0:  # If company is investing in R&D
@@ -291,11 +299,13 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     
     # 1. Capital allocation - Check FCF to net income ratio
     # Munger values companies that convert earnings to cash
-    fcf_values = [item.free_cash_flow for item in financial_line_items 
-                 if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
+    #fcf_values = [item.free_cash_flow for item in financial_line_items 
+    #             if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
+    fcf_values = [item["free_cash_flow"] for item in financial_line_items ]
     
-    net_income_values = [item.net_income for item in financial_line_items 
-                        if hasattr(item, 'net_income') and item.net_income is not None]
+    #net_income_values = [item.net_income for item in financial_line_items 
+    #                    if hasattr(item, 'net_income') and item.net_income is not None]
+    net_income_values = [item["net_income"] for item in financial_line_items ]
     
     if fcf_values and net_income_values and len(fcf_values) == len(net_income_values):
         # Calculate FCF to Net Income ratio for each period
@@ -323,11 +333,12 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         details.append("Missing FCF or Net Income data")
     
     # 2. Debt management - Munger is cautious about debt
-    debt_values = [item.total_debt for item in financial_line_items 
-                  if hasattr(item, 'total_debt') and item.total_debt is not None]
+    debt_values = [item["total_debt"] for item in financial_line_items ]
+                  #if hasattr(item, 'total_debt') and item.total_debt is not None]
     
-    equity_values = [item.shareholders_equity for item in financial_line_items 
-                    if hasattr(item, 'shareholders_equity') and item.shareholders_equity is not None]
+    #shareholders_equity = [item.shareholders_equity for item in financial_line_items]
+    equity_values = [item["shareholders_equity"] for item in financial_line_items ]
+                    #if hasattr(item, 'shareholders_equity') and item.shareholders_equity is not None]
     
     if debt_values and equity_values and len(debt_values) == len(equity_values):
         # Calculate D/E ratio for most recent period
@@ -348,10 +359,12 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         details.append("Missing debt or equity data")
     
     # 3. Cash management efficiency - Munger values appropriate cash levels
-    cash_values = [item.cash_and_equivalents for item in financial_line_items
-                  if hasattr(item, 'cash_and_equivalents') and item.cash_and_equivalents is not None]
-    revenue_values = [item.revenue for item in financial_line_items
-                     if hasattr(item, 'revenue') and item.revenue is not None]
+    #cash_values = [item.cash_and_equivalents for item in financial_line_items
+    cash_values = [item["cash_and_equivalents"] for item in financial_line_items]
+                  #if hasattr(item, 'cash_and_equivalents') and item.cash_and_equivalents is not None]
+    #revenue_values = [item.revenue for item in financial_line_items
+    revenue_values = [item["revenue"] for item in financial_line_items]
+                     #if hasattr(item, 'revenue') and item.revenue is not None]
     
     if cash_values and revenue_values and len(cash_values) > 0 and len(revenue_values) > 0:
         # Calculate cash to revenue ratio (Munger likes 10-20% for most businesses)
@@ -377,11 +390,16 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     # 4. Insider activity - Munger values skin in the game
     if insider_trades and len(insider_trades) > 0:
         # Count buys vs. sells
-        buys = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
-                   trade.transaction_type and trade.transaction_type.lower() in ['buy', 'purchase'])
-        sells = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
-                    trade.transaction_type and trade.transaction_type.lower() in ['sell', 'sale'])
-        
+        #buys = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
+        buys = sum(1 for trade in insider_trades if "transaction_type" in trade and 
+                   #trade.transaction_type and trade.transaction_type.lower() in ['buy', 'purchase'])
+                   trade["transaction_type"] and trade["transaction_type"].lower() in ['buy', 'purchase'])
+        #sells = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
+        sells = sum(1 for trade in insider_trades if "transaction_type" in trade and 
+                    #trade.transaction_type and trade.transaction_type.lower() in ['sell', 'sale'])
+                    trade["transaction_type"] and trade["transaction_type"].lower() in ['sell', 'sale'])
+        print("insider trades are ", insider_trades)
+        print("buys are:", buys, "sells are:", sells) 
         # Calculate the buy ratio
         total_trades = buys + sells
         if total_trades > 0:
@@ -403,8 +421,8 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         details.append("No insider trading data available")
     
     # 5. Consistency in share count - Munger prefers stable/decreasing shares
-    share_counts = [item.outstanding_shares for item in financial_line_items
-                   if hasattr(item, 'outstanding_shares') and item.outstanding_shares is not None]
+    share_counts = [item["outstanding_shares"] for item in financial_line_items]
+                   #if hasattr(item, 'outstanding_shares') and item.outstanding_shares is not None]
     
     if share_counts and len(share_counts) >= 3:
         if share_counts[0] < share_counts[-1] * 0.95:  # 5%+ reduction in shares
@@ -448,8 +466,8 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         insider_buy_ratio = (buys / total) if total > 0 else None
 
     # Share count trend (decreasing / stable / increasing)
-    share_counts = [item.outstanding_shares for item in financial_line_items
-                    if hasattr(item, "outstanding_shares") and item.outstanding_shares is not None]
+    share_counts = [item["outstanding_shares"] for item in financial_line_items]
+                    #if "outstanding_shares" in item and item["outstanding_shares"] is not None]
     if share_counts and len(share_counts) >= 3:
         if share_counts[0] < share_counts[-1] * 0.95:
             share_count_trend = "decreasing"
@@ -490,8 +508,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
         }
     
     # 1. Revenue stability and growth
-    revenues = [item.revenue for item in financial_line_items 
-               if hasattr(item, 'revenue') and item.revenue is not None]
+    #revenue = [item.revenue for item in financial_line_items]
+    revenues = [item["revenue"] for item in financial_line_items]
+               #if hasattr(item, 'revenue') and item.revenue is not None]
     
     if revenues and len(revenues) >= 5:
         # Calculate year-over-year growth rates, handling zero division
@@ -525,8 +544,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
         details.append("Insufficient revenue history for predictability analysis")
     
     # 2. Operating income stability
-    op_income = [item.operating_income for item in financial_line_items 
-                if hasattr(item, 'operating_income') and item.operating_income is not None]
+    #operating_income = [item.operating_income for item in financial_line_items]
+    op_income = [item["operating_income"] for item in financial_line_items]
+                #if hasattr(item, 'operating_income') and item.operating_income is not None]
     
     if op_income and len(op_income) >= 5:
         # Count positive operating income periods
@@ -550,8 +570,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
         details.append("Insufficient operating income history")
     
     # 3. Margin consistency - Munger values stable margins
-    op_margins = [item.operating_margin for item in financial_line_items 
-                 if hasattr(item, 'operating_margin') and item.operating_margin is not None]
+    #operating_margin = [item.operating_margin for item in financial_line_items]
+    op_margins = [item["operating_margin"] for item in financial_line_items]
+                 #if hasattr(item, 'operating_margin') and item.operating_margin is not None]
     
     if op_margins and len(op_margins) >= 5:
         # Calculate margin volatility
@@ -570,8 +591,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
         details.append("Insufficient margin history")
     
     # 4. Cash generation reliability
-    fcf_values = [item.free_cash_flow for item in financial_line_items 
-                 if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
+    #free_cash_flow = [item.free_cash_flow for item in financial_line_items]
+    fcf_values = [item["free_cash_flow"] for item in financial_line_items]
+                 #if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
     
     if fcf_values and len(fcf_values) >= 5:
         # Count positive FCF periods
@@ -620,8 +642,9 @@ def calculate_munger_valuation(financial_line_items: list, market_cap: float) ->
         }
     
     # Get FCF values (Munger's preferred "owner earnings" metric)
-    fcf_values = [item.free_cash_flow for item in financial_line_items 
-                 if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
+    #free_cash_flow = [item.free_cash_flow for item in financial_line_items]
+    fcf_values = [item["free_cash_flow"] for item in financial_line_items]
+                 #if hasattr(item, 'free_cash_flow') and item.free_cash_flow is not None]
     
     if not fcf_values or len(fcf_values) < 3:
         return {
@@ -827,6 +850,19 @@ def compute_confidence(analysis: dict, signal: str) -> int:
     # Keep inside global 10..100
     return max(10, min(100, conf))
 
+import numpy as np
+
+class NumpySafeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 def generate_munger_output(
     ticker: str,
@@ -838,27 +874,27 @@ def generate_munger_output(
     facts_bundle = make_munger_facts_bundle(analysis_data)
     template = ChatPromptTemplate.from_messages([
         ("system",
-         #"You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
-         "您是Charlie Munger，你只能根据提供的事实来判断股票的价格趋势, 牛市，熊市，中性。"
-         #"Return JSON only. Keep reasoning under 120 characters. "
-         #"Use the provided confidence exactly; do not change it."),
-         "仅返回JSON格式, 保持reasoning在120个字符内, 其内容请使用中文. "
-         "使用提供的置信度, 不允许更改它。"),
+         "You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
+         #"您是Charlie Munger，你只能根据提供的事实来判断股票的价格趋势, 牛市，熊市，中性。"
+         "Return JSON only. Keep reasoning under 120 characters. "
+         "Use the provided confidence exactly; do not change it."),
+         #"仅返回JSON格式, 保持reasoning在120个字符内, 其内容请使用中文. "
+         #"使用提供的置信度, 不允许更改它。"),
         ("human",
          "Ticker: {ticker}\n"
          "Facts:\n{facts}\n"
          "Confidence: {confidence}\n"
          "Return exactly:\n"
-         "{{\n"  # escaped {
+         "{{\n"  # escaped {/
          '  "signal": "bullish" | "bearish" | "neutral",\n'
          f'  "confidence": {confidence_hint},\n'
-         '  "reasoning": "简明扼要"\n'
+         '  "reasoning": "simple and concise"\n'
          "}}")  # escaped }
     ])
 
     prompt = template.invoke({
         "ticker": ticker,
-        "facts": json.dumps(facts_bundle, separators=(",", ":"), ensure_ascii=False),
+        "facts": json.dumps(facts_bundle, cls=NumpySafeEncoder, separators=(",", ":"), ensure_ascii=False),
         "confidence": confidence_hint,
     })
 

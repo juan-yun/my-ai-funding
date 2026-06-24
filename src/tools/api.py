@@ -21,6 +21,8 @@ from src.data.models import (
     InsiderTradeResponse,
     CompanyFactsResponse,
 )
+from src.price_util.us_stock_price_util import UsStockPriceUtil
+from src.edgar_tools_facade.insider_trades_mgt import get_insider_trades_by_edgartools
 
 # Global cache instance
 _cache = get_cache()
@@ -179,6 +181,14 @@ def search_line_items(
     # Cache the results
     return search_results[:limit]
 
+def get_insider_trades_myself(
+    ticker: str,
+    end_date: str,
+    start_date: str | None = None,
+    limit: int = 1000,
+) -> list[InsiderTrade]:
+    return get_insider_trades_by_edgartools(ticker, end_date, start_date, limit)
+ 
 
 def get_insider_trades(
     ticker: str,
