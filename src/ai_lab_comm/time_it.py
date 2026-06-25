@@ -2,9 +2,7 @@ from functools import wraps
 from functools import wraps
 from time import time
 
-from log_util import Log
-
-log = Log(__name__).getlog()
+from ai_lab_comm.log_util import log
 
 
 def timing(f):
