@@ -89,6 +89,7 @@ class InsiderTrade(BaseModel):
     transaction_shares: float | None
     transaction_price_per_share: float | None
     transaction_value: float | None
+    transaction_type: str | None
     shares_owned_before_transaction: float | None
     shares_owned_after_transaction: float | None
     security_title: str | None
