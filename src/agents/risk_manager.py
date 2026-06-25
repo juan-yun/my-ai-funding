@@ -1,7 +1,9 @@
 from langchain_core.messages import HumanMessage
 from src.graph.state import AgentState, show_agent_reasoning
 from src.utils.progress import progress
-from src.tools.api import get_prices, prices_to_df
+#from src.tools.api import get_prices, prices_to_df
+#from src.tools.api import get_prices_myself, prices_to_df
+from src.price_util.us_stock_price_util import UsStockPriceUtil
 import json
 import numpy as np
 import pandas as pd
@@ -13,7 +15,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     portfolio = state["data"]["portfolio"]
     data = state["data"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    #api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     
     # Initialize risk analysis for each ticker
     risk_analysis = {}
@@ -27,24 +29,25 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     for ticker in all_tickers:
         progress.update_status(agent_id, ticker, "Fetching price data and calculating volatility")
         
-        prices = get_prices(
-            ticker=ticker,
-            start_date=data["start_date"],
-            end_date=data["end_date"],
-            api_key=api_key,
-        )
+        #prices = get_prices(
+        #    ticker=ticker,
+        #    start_date=data["start_date"],
+        #    end_date=data["end_date"],
+        #    api_key=api_key,
+        #)
 
-        if not prices:
-            progress.update_status(agent_id, ticker, "Warning: No price data found")
-            volatility_data[ticker] = {
-                "daily_volatility": 0.05,  # Default fallback volatility (5% daily)
-                "annualized_volatility": 0.05 * np.sqrt(252),
-                "volatility_percentile": 100,  # Assume high risk if no data
-                "data_points": 0
-            }
-            continue
+        #if not prices:
+        #    progress.update_status(agent_id, ticker, "Warning: No price data found")
+        #    volatility_data[ticker] = {
+        #        "daily_volatility": 0.05,  # Default fallback volatility (5% daily)
+        #        "annualized_volatility": 0.05 * np.sqrt(252),
+        #        "volatility_percentile": 100,  # Assume high risk if no data
+        #        "data_points": 0
+        #    }
+        #    continue
+        prices_df = UsStockPriceUtil.get_stock_price_by_akshare(ticker, "", data["start_date"], data["end_date"])
 
-        prices_df = prices_to_df(prices)
+        #prices_df = prices_to_df(prices)
         
         if not prices_df.empty and len(prices_df) > 1:
             current_price = prices_df["close"].iloc[-1]
