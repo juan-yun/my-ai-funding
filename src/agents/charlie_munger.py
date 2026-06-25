@@ -382,7 +382,6 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     if insider_trades and len(insider_trades) > 0:
         # Count buys vs. sells
         buys = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
-        buys = sum(1 for trade in insider_trades if "transaction_type" in trade and 
                    trade.transaction_type and trade.transaction_type.lower() in ['buy', 'purchase'])
         sells = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
                     trade.transaction_type and trade.transaction_type.lower() in ['sell', 'sale'])
