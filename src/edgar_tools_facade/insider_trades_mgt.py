@@ -17,12 +17,12 @@ from edgar import Filing
 def build_insider_trade(ticker, filing: Filing) -> List[InsiderTrade]:
     form4 = filing.obj()
     #trades = form4.to_dataframe(include_metadata=True).to_dict(orient="records")
-    log.info(f"filing {filing.filing_date}, summary is {form4.get_ownership_summary()}")    
+    #log.info(f"filing {filing.filing_date}, summary is {form4.get_ownership_summary()}")    
     result = []
     summary = form4.get_ownership_summary()
     director_positions = ["Director", "EVP", "CHIEF"]    
     for trans in summary.transactions:
-        log.info(trans)
+        #log.info(trans)
         trade = InsiderTrade(
                 ticker = ticker,
                 transaction_type = trans.transaction_type,  
@@ -39,7 +39,7 @@ def build_insider_trade(ticker, filing: Filing) -> List[InsiderTrade]:
                 security_title = trans.security_title,
                 filing_date = filing.filing_date.strftime("%Y-%m-%d")
         )
-        log.info(f"processed trade is: {trade}")
+        #log.info(f"processed trade is: {trade}")
         result.append(trade)
     return result
 

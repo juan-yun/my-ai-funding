@@ -8,6 +8,7 @@ sys.path.append(".")
 from tabulate import tabulate
 
 from ai_lab_comm.log_util import log
+from ai_lab_comm.time_it import timing
 from sec_gov_utils.fiscal_year_quarter_info import get_sec_fiscal_info
 from edgar import set_identity, Filing, get_filings
 from edgar import *
@@ -16,6 +17,7 @@ from edgar.xbrl.statements  import Statement
 from financial_datasets_ai_client import query_all_financial_concepts, search_line_items
 from src.edgar_tools_facade.concept_mapping_constants import EDGAR_TOOLS_LINE_ITEMS_MAP, ALL_DEPENDENCY_CONCEPTS
 from src.edgar_tools_facade.concept_mapping_constants import ALL_CONCEPTS_ITEMS
+from src.data.models import LineItem
 from price_util.us_stock_price_util import UsStockPriceUtil
 
 '''
@@ -52,20 +54,26 @@ class EdgarToolsFacade:
             
         form_type = "10-K" if period == "annual" else "10-Q"
         company_obj, filings = self.filter_filing(ticker, period, form_type, end_date, limit)
+        if company_obj is None or filings is None:
+            log.warning(f"company {ticker} not found in edgar sdk.")
+            return []
         total_result = []
-        for filing in filings:
-            result = self.query_concepts_from_filing(company_obj, filing, period, line_concepts_cfgs)
+        for idx, filing in enumerate(filings):
+            log.info(f"begin to process filing {idx} for {ticker}")
+            result = self.query_concepts_from_filing(ticker, company_obj, filing, period, line_concepts_cfgs)
+            log.info(f"end to process filing {idx} for {ticker}")
             total_result.append(result)
         return total_result
-    
-    def query_concepts_from_filing(self, company_obj: Company, filing: Filing, period: str, line_items_cfgs: Dict):
-        ticker = company_obj.get_ticker()
+
+    @timing
+    def query_concepts_from_filing(self, ticker:str, company_obj: Company, filing: Filing, period: str, line_items_cfgs: Dict):
+        filing_date, report_date = filing.filing_date, filing.period_of_report
+        log.info(f"begin query concepts from {ticker} filing, filing date{filing_date}, report date{report_date} ")
         result = {}
         result["ticker"] = ticker
-        result["report_period"] = filing.period_of_report
+        result["report_period"] = report_date
         result["period"] = period
-        result["currency"] = "USD"
-        log.info(f"Filing for ticker {ticker} date is {filing.period_of_report}, url is {filing.url}")
+        result["currency"] = "USD"  #todo
         self.get_line_concepts_from_filing(ticker, filing, "income_statement", line_items_cfgs, result)
         self.get_line_concepts_from_filing(ticker, filing, "balance_sheet", line_items_cfgs, result)
         result["effective_tax_rate"] = self.query_effective_tax_rate(company_obj, filing, period)
@@ -73,9 +81,9 @@ class EdgarToolsFacade:
         result["outstanding_shares"] = self.query_outstanding_shares(company_obj, filing, period)
         result["book_value_per_share"] = self._calc_book_value_per_share(result)
         self.get_line_concepts_from_filing(ticker, filing, "cash_flow_statement", line_items_cfgs, result)
-        result["market_cap"] = self._calc_market_cap(ticker, result, filing.period_of_report)
         log.info(f"query result ALL is {result}")
-        return result   
+        object = LineItem.model_validate(result)
+        return object
 
     def query_effective_tax_rate(self, company: Company, filing: Filing, period: str):
         log.info("begin query effective tax rate")
@@ -96,7 +104,6 @@ class EdgarToolsFacade:
             return gaap_values
         return 0.0
 
-
     def query_interest_expense(self, company: Company, filing: Filing, period: str):
         facts = company.get_facts()
         gaap_values = facts.query()\
@@ -105,7 +112,6 @@ class EdgarToolsFacade:
             .by_form_type('10-K')\
             .sort_by('filing_date')\
             .execute()
-        log.info(f"gaap_values is {gaap_values}")
         if len(gaap_values) <= 0:
             log.warning(f"For company {company.get_ticker()}, period {period}, no interest expense found")
             return 0.0
@@ -127,7 +133,7 @@ class EdgarToolsFacade:
         
         dei_value = dei_results[0].numeric_value if len(dei_results) >0 else None
         if dei_value is not None:
-            log.info(f"For {company.get_ticker()}, period {period}, dei_value is {dei_value}")
+            log.info(f"For {company.get_ticker()}, period {period}, outstanding shares(dei_value) is {dei_value}")
             return dei_value
         gaap_value = facts.query()\
             .by_concept('us-gaap:CommonStockSharesOutstanding')\
@@ -137,18 +143,9 @@ class EdgarToolsFacade:
             .execute()
         gaap_value = gaap_value[0].numeric_value if len(gaap_value) >0 else None
         if gaap_value is not None:
-            log.info(f"For company {company.get_ticker()}, period {period}, gaap_value is {gaap_value}")
+            log.info(f"For company {company.get_ticker()}, period {period}, outstanding shares(gaap_value) is {gaap_value}")
             return gaap_value
         log.warning(f"For {company.get_ticker()}, period {period}, no outstanding shares found")
-
-        gaap_value = facts.query()\
-            .by_concept('us-gaap:CommonStockSharesOutstanding')\
-            .by_fiscal_year(int(filing.report_date[:4]))\
-            .by_form_type('10-K')\
-            .sort_by('filing_date')\
-            .execute()
- 
-
         return 0.0
 
     def display_query_concepts_results(self, total_result:Dict):
@@ -161,27 +158,30 @@ class EdgarToolsFacade:
     def filter_filing(self, ticker:str, period: str, form_type: str,
                       end_date: datetime, limit)->Filing:
         company_obj = Company(ticker)
-        log.info(f"Shares Outstanding are: {company_obj.shares_outstanding:,.0f}")
+        if company_obj is None:
+            log.warning(f"For company {ticker}, can't build company object by edgar sdk.")
+            return None, None
         filings = company_obj.get_filings(form=form_type)
         filter_filings = []
         cnt = 0
         for filing in filings:
             filing_date = datetime.combine(filing.filing_date, datetime.min.time())
             # filing.save(f"../filings/{ticker}_{filing_date}.html")
-            log.info(f"filing_date is {filing_date}, type is {type(filing_date)}")
-            log.info(f"end_date is {end_date}, type is {type(end_date)}")
             if filing_date <= end_date:
                 filter_filings.append(filing)
-                log.info(f"filter filing {filing_date}")
+                log.info(f"{ticker}: {cnt} filing, filing_date:{filing_date} <= {end_date}.")
                 cnt += 1
                 if cnt >= limit:
                     break
         return company_obj, filter_filings
 
-
+    @timing
     def get_line_concepts_from_filing(self, ticker: str, filing: Filing, statement_type: str, line_concepts_cfgs: Dict,
                                       tmp_result:Dict[str, float]):
         xbrl = filing.xbrl()
+        if xbrl is None:
+            log.warning(f"For company {ticker}, filing {filing.url}, no xbrl found")
+            return
         statements = xbrl.statements 
         if statement_type == "income_statement":
             income_statement = statements.income_statement()
@@ -212,20 +212,8 @@ class EdgarToolsFacade:
             tmp_result["issuance_or_purchase_of_equity_shares"] = self._calc_issuance_or_purchase_of_equity_shares(tmp_result)    
             tmp_result["ebitda"] = self._calc_ebitda(tmp_result)
             return
-
         return
     
-    def _calc_market_cap(self, ticker, item_values: Dict, specific_date: str):
-        ret = 0.0
-        price = UsStockPriceUtil.query_valid_close_price(ticker, "", specific_date)
-        if price is None:
-            log.warning(f"get {ticker} price failed, specific_date is {specific_date}")
-            return ret
-        if "outstanding_shares" in item_values and item_values["outstanding_shares"] is not None:
-            ret = price * item_values["outstanding_shares"]
-        log.info(f"{ticker} market_cap is {price} * {item_values['outstanding_shares']} = {ret}")
-        return ret
-
     def _calc_book_value_per_share(self, item_values: Dict):
         ret = 0.0
         shareholders_equity, outstanding_shares = 0.0, 0.0
@@ -483,13 +471,13 @@ class EdgarToolsFacade:
         cols = ['concept', 'standard_concept', "unit", 
                 'abstract',  'weight'] #, 'dimension', 'dimension_label']
 
-        log.info(f"column is {df.columns}")
+        #log.info(f"column is {df.columns}")
         log.info(f"concepts is {df['concept'].unique()}")
         log.info(f"standard concepts is {df['standard_concept'].unique()}")
         value_cols = [col for col in df.columns if 2 == col.count("-")]
 
         target_cols = cols + [value_cols[0]]
-        log.info(f"total {statement_type} df for {ticker} is \n {df[target_cols]}")
+        #log.info(f"total {statement_type} df for {ticker} is \n {df[target_cols]}")
         #tmp_result = {}
         for concept, concept_cfg in line_concepts_cfgs.items():
             tmp_result[concept] = None
