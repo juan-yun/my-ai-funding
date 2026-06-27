@@ -1,15 +1,18 @@
 
 source .env
+corp_list=(
+"MMM"
+#"NOK" 
+#"F" 
+#"ERIC" 
+#"AMD"
+) #"GOOGL" "AAPL")
 
-python src/main.py --tickers AAPL,MSFT,NVDA,GOOGL,TLSA --initial-cash 1000 --show-agent-graph --analysts charlie_munger --model DeepSeekR1  --show-reasoning
+# 遍历数组的所有元素
+for corp in "${corp_list[@]}"; do
+    echo "now start to analysis $corp financial data"
+    nohup python src/main.py --tickers $corp --initial-cash 1000 --show-agent-graph --analysts charlie_munger --model Qwen/Qwen2.5-72B-Instruct --show-reasoning --start_date 2026-01-01 --end_date 2026_06_27 1>logs/$corp.log 2>&1 &
+done
 
-
-#python src/main.py --tickers AAPL --initial-cash 1000 --analysts charlie_munger --model DeepSeekR1  --show-reasoning --show-agent-graph --show-reasoning
+#nohup python src/main.py --tickers NOK --initial-cash 1000 --show-agent-graph --analysts charlie_munger --model Qwen/Qwen2.5-72B-Instruct --show-reasoning 1>logs/NOK .log 2>&1 &
 #
-#python src/main.py --tickers MSFT --initial-cash 1000 --analysts charlie_munger --model DeepSeekR1  --show-reasoning --show-agent-graph --show-reasoning
-#
-#python src/main.py --tickers GOOGL --initial-cash 1000 --analysts charlie_munger --model DeepSeekR1  --show-reasoning --show-agent-graph --show-reasoning
-#
-#python src/main.py --tickers TLSA --initial-cash 1000 --analysts charlie_munger --model DeepSeekR1  --show-reasoning --show-agent-graph --show-reasoning
-#
-#python src/main.py --tickers NVDA --initial-cash 1000 --analysts charlie_munger --model DeepSeekR1  --show-reasoning --show-agent-graph  --show-reasoning
