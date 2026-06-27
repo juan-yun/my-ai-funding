@@ -41,7 +41,8 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
         metrics = None #get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
-        end_date = datetime.strptime(end_date, "%Y-%m-%d")
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, "%Y-%m-%d")
         financial_line_items = edgar_tools.query_concepts(
         #financial_line_items = search_line_items(
             ticker,
@@ -53,7 +54,7 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
                 "research_and_development", "goodwill_and_intangible_assets", ],
             end_date,
             period="annual",
-            limit=10,  # Munger examines long-term trends
+            limit=3,  # Munger examines long-term trends
             #api_key=api_key,
         )
         
@@ -70,7 +71,7 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
         insider_trades = get_insider_trades_myself(
             ticker,
             end_date,
-            limit=100,
+            limit=10,
             #api_key=api_key,
         )
         

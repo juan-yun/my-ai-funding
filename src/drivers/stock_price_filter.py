@@ -85,11 +85,18 @@ class StockPriceFilter:
         tickers = self._get_all_tickers()
         results = []
         
-        log.info(f"begin filter stocks, date range: {start_date} to {end_date}, price range: [${price_min} - ${price_max}]")
+        log.info(f"begin filter: {start_date} to {end_date}, price range: [${price_min} - ${price_max}]")
+
         log.info(f"total stocks to check: {len(tickers)}")
         
         for i, ticker in enumerate(tickers):
             log.info(f"progress: {i}/{len(tickers)} - checking {ticker}")
+            corp = Company(ticker)
+            filings = corp.get_filings(form="10-K")
+            if len(filings) == 0:
+                log.warning(f"For company {ticker}, no filing found by edgar sdk.")
+                continue
+
             price_data = self._get_price_range(ticker, start_date, end_date)
             if price_data is None:
                 continue

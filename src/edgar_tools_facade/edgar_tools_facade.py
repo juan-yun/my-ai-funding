@@ -42,7 +42,7 @@ class EdgarToolsFacade:
             ALL_DEPENDENCY_CONCEPTS["balance_sheet"] + \
             ALL_DEPENDENCY_CONCEPTS["cash_flow_statement"] 
         
-        log.info(f"Try to query line concepts by edgar tools for corp {ticker}, end date{end_date}, \
+        log.info(f"Try to query line concepts by edgar tools for corp {ticker}, end date {end_date}, \
                      {period}, {limit}")
         line_concepts_cfgs = {}
         for line_concept in target_line_concepts:
@@ -60,9 +60,11 @@ class EdgarToolsFacade:
         total_result = []
         for idx, filing in enumerate(filings):
             log.info(f"begin to process filing {idx} for {ticker}")
+            log.info(f"{ticker} Filing date is {filing.filing_date}, report date is {filing.period_of_report}, url is {filing.url}")
             result = self.query_concepts_from_filing(ticker, company_obj, filing, period, line_concepts_cfgs)
             log.info(f"end to process filing {idx} for {ticker}")
-            total_result.append(result)
+            if result is not None:
+                total_result.append(result)
         return total_result
 
     @timing
@@ -74,13 +76,19 @@ class EdgarToolsFacade:
         result["report_period"] = report_date
         result["period"] = period
         result["currency"] = "USD"  #todo
-        self.get_line_concepts_from_filing(ticker, filing, "income_statement", line_items_cfgs, result)
-        self.get_line_concepts_from_filing(ticker, filing, "balance_sheet", line_items_cfgs, result)
+        ret = self.get_line_concepts_from_filing(ticker, filing, "income_statement", line_items_cfgs, result)
+        if ret == False:
+            return None
+        ret = self.get_line_concepts_from_filing(ticker, filing, "balance_sheet", line_items_cfgs, result)
+        if ret == False:
+            return None
         result["effective_tax_rate"] = self.query_effective_tax_rate(company_obj, filing, period)
         result["interest_expense"] = self.query_interest_expense(company_obj, filing, period)
         result["outstanding_shares"] = self.query_outstanding_shares(company_obj, filing, period)
         result["book_value_per_share"] = self._calc_book_value_per_share(result)
-        self.get_line_concepts_from_filing(ticker, filing, "cash_flow_statement", line_items_cfgs, result)
+        ret = self.get_line_concepts_from_filing(ticker, filing, "cash_flow_statement", line_items_cfgs, result)
+        if ret == False:
+            return None
         log.info(f"query result ALL is {result}")
         object = LineItem.model_validate(result)
         return object
@@ -162,11 +170,17 @@ class EdgarToolsFacade:
             log.warning(f"For company {ticker}, can't build company object by edgar sdk.")
             return None, None
         filings = company_obj.get_filings(form=form_type)
+        if len(filings) == 0:
+            log.warning(f"For company {ticker}, no filing found by edgar sdk.")
+            return None, None
+        if len(filings) < limit:
+            log.warning(f"For company {ticker}, only {len(filings)} filings found by edgar sdk.")
         filter_filings = []
         cnt = 0
         for filing in filings:
             filing_date = datetime.combine(filing.filing_date, datetime.min.time())
             # filing.save(f"../filings/{ticker}_{filing_date}.html")
+            log.info(f"filing_date type is {type(filing_date)}, end_date type is {type(end_date)}")
             if filing_date <= end_date:
                 filter_filings.append(filing)
                 log.info(f"{ticker}: {cnt} filing, filing_date:{filing_date} <= {end_date}.")
@@ -177,14 +191,17 @@ class EdgarToolsFacade:
 
     @timing
     def get_line_concepts_from_filing(self, ticker: str, filing: Filing, statement_type: str, line_concepts_cfgs: Dict,
-                                      tmp_result:Dict[str, float]):
+                                      tmp_result:Dict[str, float])->bool:
         xbrl = filing.xbrl()
         if xbrl is None:
             log.warning(f"For company {ticker}, filing {filing.url}, no xbrl found")
-            return
+            return False
         statements = xbrl.statements 
         if statement_type == "income_statement":
             income_statement = statements.income_statement()
+            if income_statement is None:
+                log.warning(f"For company {ticker}, filing {filing.url}, no income statement found")
+                return False
             cfgs = {concept:cfg for concept, cfg in line_concepts_cfgs.items() if cfg["stmt"] == "IS"}
             self.extract_item_from_statement(ticker, income_statement, statement_type, cfgs,
                                                           tmp_result)
@@ -193,7 +210,7 @@ class EdgarToolsFacade:
             tmp_result["operating_expense"] = self._calc_operating_expense(tmp_result)
             tmp_result["operating_margin"] = self._calc_operating_margin(tmp_result)
             tmp_result["ebit"] = self._calc_ebit(tmp_result)
-            return
+            return True
         if statement_type == "balance_sheet":
             balance_sheet = statements.balance_sheet()
             cfgs = {concept:cfg for concept, cfg in line_concepts_cfgs.items() if cfg["stmt"] == "BS"}
@@ -202,7 +219,7 @@ class EdgarToolsFacade:
             tmp_result["working_capital"] = self._calc_working_capital(tmp_result)
             tmp_result["total_debt"] = self._calc_total_debt(tmp_result)
             tmp_result["debt_to_equity"] = self._calc_debt_to_equity(tmp_result)
-            return
+            return True
         if statement_type == "cash_flow_statement":
             cash_flow_statement = statements.cash_flow_statement()
             cfgs = {concept:cfg for concept, cfg in line_concepts_cfgs.items() if cfg["stmt"] == "CF"}
@@ -211,8 +228,8 @@ class EdgarToolsFacade:
             tmp_result["free_cash_flow"] = self._calc_free_cash_flow(tmp_result)
             tmp_result["issuance_or_purchase_of_equity_shares"] = self._calc_issuance_or_purchase_of_equity_shares(tmp_result)    
             tmp_result["ebitda"] = self._calc_ebitda(tmp_result)
-            return
-        return
+            return True
+        return True
     
     def _calc_book_value_per_share(self, item_values: Dict):
         ret = 0.0
@@ -465,6 +482,7 @@ class EdgarToolsFacade:
     #def extract_income_statement(self, filing: Filing, line_items_cfgs: Dict):
     def extract_item_from_statement(self, ticker: str, statement:Statement, statement_type: str, line_concepts_cfgs: Dict,
                                     tmp_result:Dict[str, float]):
+        
         df = statement.to_dataframe(
                             include_standardization=True, include_unit=True, 
                             include_point_in_time=True, matrix=True, view="detailed")
@@ -570,6 +588,7 @@ class TestEdgarToolsFacade:
             period = corp_info["period"]
             limit = corp_info["limit"]
             result_key = TestEdgarToolsFacade.gen_key(ticker, period, start_date, end_date, limit)  
+            log.info(f"end date  is {end_date}, type is {type(end_date)}")
             rets = self.edgar_tools.query_concepts(
                 ticker, target_items, 
                 datetime.strptime(end_date, "%Y-%m-%d"), 
