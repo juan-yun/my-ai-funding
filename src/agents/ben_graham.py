@@ -1,5 +1,5 @@
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+from src.tools.api import get_financial_metrics, get_market_cap, get_market_cap_myself, search_line_items
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -28,21 +28,28 @@ def ben_graham_agent(state: AgentState, agent_id: str = "ben_graham_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+    api_key = None #get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     
     analysis_data = {}
     graham_analysis = {}
 
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)
+        metrics = None #get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
-        financial_line_items = search_line_items(ticker, ["earnings_per_share", "revenue", "net_income", "book_value_per_share", "total_assets", "total_liabilities", "current_assets", "current_liabilities", "dividends_and_other_cash_distributions", "outstanding_shares"], end_date, period="annual", limit=10, api_key=api_key)
+        financial_line_items = search_line_items(ticker, 
+            ["earnings_per_share", "revenue", "net_income", 
+             "book_value_per_share", "total_assets", "total_liabilities", 
+             "current_assets", "current_liabilities", 
+             "dividends_and_other_cash_distributions", "outstanding_shares"], 
+            end_date, period="annual", limit=10, api_key=api_key)
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
-
+        #market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap_myself(ticker, end_date, financial_line_items[-1].outstanding_shares)
+        if market_cap is None:
+            continue
         # Perform sub-analyses
         progress.update_status(agent_id, ticker, "Analyzing earnings stability")
         earnings_analysis = analyze_earnings_stability(metrics, financial_line_items)
@@ -104,7 +111,8 @@ def analyze_earnings_stability(metrics: list, financial_line_items: list) -> dic
     score = 0
     details = []
 
-    if not metrics or not financial_line_items:
+    #if not metrics or not financial_line_items:
+    if not financial_line_items:
         return {"score": score, "details": "Insufficient data for earnings stability analysis"}
 
     eps_vals = []
