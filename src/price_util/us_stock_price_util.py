@@ -31,24 +31,26 @@ class UsStockPriceUtil:
         return filtered_df
 
     @classmethod
-    def query_valid_close_price(cls, symbol, adjust, specific_date:str)->float|None:
-        df = ak.stock_us_daily(symbol=symbol, adjust=adjust)
-        log.info(f"price df: \n{df}")
+    def query_valid_close_price(cls, ticker, adjust, specific_date:str)->float|None:
+        df = ak.stock_us_daily(symbol=ticker, adjust=adjust)
+        log.info(f"latest price df: \n{df.head(10)}")
         if df is None:
             return None
         if specific_date is None or specific_date == "":
             return df.tail(1)["close"].iloc[0]
-        #specific_date = pd.to_datetime(specific_date)
         price_df = df[df['date'] == specific_date]
-        while True:
+        cnt = 0
+        while cnt < 30:
+            cnt += 1
             if price_df.empty:
                 specific_date = pd.to_datetime(specific_date) - pd.Timedelta(days=1)
                 price_df = df[df['date'] == specific_date]
-                log.info(f"price_df: \n{price_df} at {specific_date}")
             else:
                 break
-        log.info(f"price_df: \n{price_df} at {specific_date}")
+        if price_df.empty:
+            return None
         price = price_df["close"].iloc[0]
+        log.info(f"{ticker} price at {specific_date} is {price}")
         return price
 
 

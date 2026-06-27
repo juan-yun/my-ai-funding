@@ -1,6 +1,6 @@
 from src.graph.state import AgentState, show_agent_reasoning
 #from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_insider_trades, get_company_news
-from src.tools.api import get_financial_metrics, search_line_items, get_insider_trades_myself, get_company_news
+from src.tools.api import get_financial_metrics, search_line_items, get_market_cap_myself, get_insider_trades_myself, get_company_news
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -10,7 +10,12 @@ from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
 from src.edgar_tools_facade.edgar_tools_facade import EdgarToolsFacade
+
+from src.ai_lab_comm.log_util import log
 from datetime import datetime
+
+
+
 
 class CharlieMungerSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -33,8 +38,6 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
     edgar_tools = EdgarToolsFacade()
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        #metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)  # Munger looks at longer periods
-        #metrics = get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
         metrics = None #get_financial_metrics(ticker, end_date, period="annual", limit=3, api_key=api_key)  # Munger looks at longer periods
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
@@ -51,13 +54,13 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
             end_date,
             period="annual",
             limit=10,  # Munger examines long-term trends
-            #limit=3,  # Munger examines long-term trends
             #api_key=api_key,
         )
         
         progress.update_status(agent_id, ticker, "Getting market cap")
         #market_cap = get_market_cap(ticker, end_date, api_key=api_key)
-        market_cap = financial_line_items[-1].market_cap
+        #market_cap = financial_line_items[-1].market_cap
+        market_cap = get_market_cap_myself(ticker, end_date, financial_line_items[-1].outstanding_shares)
         if market_cap is None:
             continue
         
@@ -67,8 +70,7 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
         insider_trades = get_insider_trades_myself(
             ticker,
             end_date,
-            #limit=100,
-            limit=3,
+            limit=100,
             #api_key=api_key,
         )
         
@@ -206,7 +208,6 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
 
     gross_margins = [item.gross_margin for item in financial_line_items 
                     if hasattr(item, 'gross_margin') and item.gross_margin is not None]
-    print(f"gross_margin are: {gross_margins}")    
     if gross_margins and len(gross_margins) >= 3:
         # Munger likes stable or improving gross margins
         margin_trend = sum(1 for i in range(1, len(gross_margins)) if gross_margins[i] >= gross_margins[i-1])
@@ -228,7 +229,7 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
             if (hasattr(item, 'capital_expenditure') and item.capital_expenditure is not None and 
                 hasattr(item, 'revenue') and item.revenue is not None and item.revenue > 0):
                 # Note: capital_expenditure is typically negative in financial statements
-                capex_ratio = abs(item["capital_expenditure"]) / item["revenue"]
+                capex_ratio = abs(item.capital_expenditure) / item.revenue
                 capex_to_revenue.append(capex_ratio)
         
         if capex_to_revenue:
@@ -264,9 +265,9 @@ def analyze_moat_strength(metrics: list, financial_line_items: list) -> dict:
     
     # Scale score to 0-10 range
     final_score = min(10, score * 10 / 9)  # Max possible raw score is 9
-    print(f"During calculate moat strengh, details as below, score {final_score}")
+    log.info(f"During calculate moat strengh, details as below, score {final_score}")
     for detail in details:
-        print(detail)
+        log.info(detail)
     
     return {
         "score": final_score,
@@ -385,8 +386,6 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
                    trade.transaction_type and trade.transaction_type.lower() in ['buy', 'purchase'])
         sells = sum(1 for trade in insider_trades if hasattr(trade, 'transaction_type') and 
                     trade.transaction_type and trade.transaction_type.lower() in ['sell', 'sale'])
-        print("insider trades are ", insider_trades)
-        print("buys are:", buys, "sells are:", sells) 
         # Calculate the buy ratio
         total_trades = buys + sells
         if total_trades > 0:
@@ -449,12 +448,14 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
         sells = sum(1 for t in insider_trades
                     if getattr(t, "transaction_type", None)
                     and t.transaction_type.lower() in ["sell", "sale"])
+        log.info(f"buys are {buys}")
+        log.info(f"sells are {sells}")
         total = buys + sells
         insider_buy_ratio = (buys / total) if total > 0 else None
 
     # Share count trend (decreasing / stable / increasing)
-    share_counts = [item["outstanding_shares"] for item in financial_line_items]
-                    #if "outstanding_shares" in item and item["outstanding_shares"] is not None]
+    share_counts = [ item.outstanding_shares for item in financial_line_items 
+                     if hasattr(item, 'outstanding_shares') and item.outstanding_shares is not None]
     if share_counts and len(share_counts) >= 3:
         if share_counts[0] < share_counts[-1] * 0.95:
             share_count_trend = "decreasing"
@@ -467,9 +468,9 @@ def analyze_management_quality(financial_line_items: list, insider_trades: list)
     # Maximum possible raw score would be 12 (3+3+2+2+2)
     final_score = max(0, min(10, score * 10 / 12))
     
-    print(f"During analysis management quality, details as below, score {final_score}")
+    log.info(f"During analysis management quality, details as below, score {final_score}")
     for detail in details:
-        print(detail)
+        log.info(detail)
     return {
         "score": final_score,
         "details": "; ".join(details),
@@ -603,9 +604,9 @@ def analyze_predictability(financial_line_items: list) -> dict:
     # Maximum possible raw score would be 10 (3+3+2+2)
     final_score = min(10, score * 10 / 10)
     
-    print(f"During analysis management quality, details as below, score {final_score}")
+    log.info(f"During analysis management quality, details as below, score {final_score}")
     for detail in details:
-        print(detail)
+        log.info(detail)
     return {
         "score": final_score,
         "details": "; ".join(details)
@@ -714,9 +715,9 @@ def calculate_munger_valuation(financial_line_items: list, market_cap: float) ->
     # Maximum possible raw score would be 10 (4+3+3)
     final_score = min(10, score * 10 / 10) 
     
-    print(f"During calculate munger valuation score, details as below, score {final_score}")
+    log.info(f"During calculate munger valuation score, details as below, score {final_score}")
     for detail in details:
-        print(detail)
+        log.info(detail)
     return {
         "score": final_score,
         "details": "; ".join(details),

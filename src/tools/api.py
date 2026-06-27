@@ -181,6 +181,22 @@ def search_line_items(
     # Cache the results
     return search_results[:limit]
 
+def get_market_cap_myself(
+    ticker: str,
+    specific_date: str,
+    outstanding_shares: float,
+   ) -> list[InsiderTrade]:
+    ret = 0.0
+    price = UsStockPriceUtil.query_valid_close_price(ticker, "", specific_date)
+    if price is None:
+        logger.warning(f"get {ticker} price failed, specific_date is {specific_date}")
+        return None
+    ret = price * outstanding_shares
+    logger.info(f"{ticker} market_cap is {price} * {outstanding_shares} = {ret}")
+    return ret
+
+
+
 def get_insider_trades_myself(
     ticker: str,
     end_date: str,
@@ -306,7 +322,6 @@ def get_company_news(
         # Only continue pagination if we have a start_date and got a full page
         if not start_date or len(company_news) < limit:
             break
-
         # Update end_date to the oldest date from current batch for next iteration
         current_end_date = min(news.date for news in company_news).split("T")[0]
 

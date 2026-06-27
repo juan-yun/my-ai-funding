@@ -8,6 +8,7 @@ import json
 import numpy as np
 import pandas as pd
 from src.utils.api_key import get_api_key_from_state
+from src.ai_lab_comm.log_util import log
 
 ##### Risk Management Agent #####
 def risk_management_agent(state: AgentState, agent_id: str = "risk_management_agent"):
@@ -45,6 +46,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
         #        "data_points": 0
         #    }
         #    continue
+        
         prices_df = UsStockPriceUtil.get_stock_price_by_akshare(ticker, "", data["start_date"], data["end_date"])
 
         #prices_df = prices_to_df(prices)
@@ -78,7 +80,13 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
             }
 
     # Build returns DataFrame aligned across tickers for correlation analysis
+    '''
+    组合总风险 ≠ 个股风险简单加权。
+    只要资产之间不完全正相关（\(\rho<1\)），把多只股票拼在一起，
+    整体组合风险可以低于任何一只个股的风险 —— 这就是分散化投资的数学基础
+    '''
     correlation_matrix = None
+    log.info("returns_by_ticker is %s", returns_by_ticker)
     if len(returns_by_ticker) >= 2:
         try:
             returns_df = pd.DataFrame(returns_by_ticker).dropna(how="any")
@@ -86,6 +94,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
                 correlation_matrix = returns_df.corr()
         except Exception:
             correlation_matrix = None
+    log.info("correlation_matrix is %s", correlation_matrix)
 
     # Determine which tickers currently have exposure (non-zero absolute position)
     active_positions = {
@@ -273,7 +282,8 @@ def calculate_volatility_metrics(prices_df: pd.DataFrame, lookback_days: int = 6
 def calculate_volatility_adjusted_limit(annualized_volatility: float) -> float:
     """
     Calculate position limit as percentage of portfolio based on volatility.
-    
+    功能：根据标的年化波动率，自动计算该股票在整个投资组合中的仓位上限（占总资金的百分比），
+         属于波动率仓位风控模型。
     Logic:
     - Low volatility (<15%): Up to 25% allocation
     - Medium volatility (15-30%): 15-20% allocation  

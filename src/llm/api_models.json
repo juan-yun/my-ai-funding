@@ -36,7 +36,7 @@
   },
   {
     "display_name": "Qwen2.5-Instruct",
-    "model_name": "qwen2.5-instruct",
+    "model_name": "Qwen/Qwen2.5-72B-Instruct",
     "provider": "OpenAI"
   }
 ]
