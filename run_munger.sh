@@ -1,5 +1,5 @@
 source .env
-
+source ./api_info.sh
 
 corp_str=$(grep match logs/below20_tickers.log | awk -F: '{print $7}' | awk -F= '{print $2}' | awk -F, '{print $1}'|tr -d '"'|tr -d "'")
 mapfile -t corp_list <<< "$corp_str"
