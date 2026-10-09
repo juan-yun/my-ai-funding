@@ -349,6 +349,10 @@ class EdgarToolsFacade:
             return
         revenue = item_values["revenue"]
         cost_of_goods_sold = item_values["cost_of_goods_sold"]
+        if revenue is None:
+            return 0.0
+        if cost_of_goods_sold is None:
+            return revenue
         ret = revenue - cost_of_goods_sold
         return ret
 
